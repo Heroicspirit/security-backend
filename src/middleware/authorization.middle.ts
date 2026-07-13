@@ -9,17 +9,9 @@ export interface AuthRequest extends Request {
   user: IUser;
 }
 
-declare global {
-    namespace Express {
-        interface Request {
-            user?: IUser; 
-        }
-    }
-}
-
 const userRepository = new UserRepository(); 
 
-export const authorizedMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+export const authorizedMiddleware = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const authHeader = req.headers.authorization;
         
@@ -53,7 +45,7 @@ export const authorizedMiddleware = async (req: Request, res: Response, next: Ne
 };
 
 export const adminMiddleware = async (
-    req: Request, res: Response, next: NextFunction
+    req: AuthRequest, res: Response, next: NextFunction
 ) => {
     try {
         if (!req.user) {
