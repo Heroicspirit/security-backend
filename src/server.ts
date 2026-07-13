@@ -18,7 +18,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 app.get("/", (_req, res) => {
-  res.json({ message: "MotoParts Backend API is running" });
+  res.json({ message: "Security Backend API is running" });
 });
 
 app.get("/health", (_req, res) => {
