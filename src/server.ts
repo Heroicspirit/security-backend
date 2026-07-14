@@ -1,16 +1,31 @@
 import cors from "cors";
 import express from "express";
+import helmet from "helmet";
 import { PORT } from "./config";
 import { connectDatabase } from "./database/mongodb";
 import authRoutes from "./routes/auth.route";
-import productRoutes from "./routes/product.route";
-import orderRoutes from "./routes/order.route";
-import cartRoutes from "./routes/cart.route";
 import path from "path";
 
 const app = express();
 
-app.use(cors());
+// Security middleware
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
+
+app.use(cors({
+  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  credentials: true,
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -26,9 +41,6 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
-app.use("/api/products", productRoutes);
-app.use("/api/orders", orderRoutes);
-app.use("/api/cart", cartRoutes);
 
 
 connectDatabase()
