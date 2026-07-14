@@ -1,10 +1,12 @@
-import { createUserDto, LoginUserDto, UpdateUserDto } from "../dtos/user.dtos";
+import { createUserDto, LoginUserDto, UpdateUserDto, EnableMfaDto, VerifyMfaDto } from "../dtos/user.dtos";
 import { UserRepository } from "../repository/user.repository";
 import bcryptjs from "bcryptjs";
 import { HttpError } from "../errors/http-error";
 import  jwt  from "jsonwebtoken";
 import { JWT_SECRET } from "../config";
 import { sendEmail } from "../config/email";
+import speakeasy from "speakeasy";
+import QRCode from "qrcode";
 
 
 
@@ -142,5 +144,93 @@ export class UserService {
         } catch (error) {
             throw new HttpError(400, "Invalid or expired token");
         }
+    }
+
+    async generateMfaSecret(userId: string) {
+        const user = await userRepository.getUserById(userId);
+        if (!user) {
+            throw new HttpError(404, "User not found");
+        }
+
+        if (user.mfaEnabled) {
+            throw new HttpError(400, "MFA is already enabled");
+        }
+
+        const secret = speakeasy.generateSecret({
+            name: `SecurityApp (${user.email})`,
+            issuer: "SecurityApp",
+        });
+
+        await userRepository.updateUser(userId, { mfaSecret: secret.base32 });
+
+        const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url || "");
+
+        return {
+            secret: secret.base32,
+            qrCode: qrCodeUrl,
+            message: "Scan the QR code with your authenticator app"
+        };
+    }
+
+    async enableMfa(userId: string, data: EnableMfaDto) {
+        const user = await userRepository.getUserById(userId);
+        if (!user) {
+            throw new HttpError(404, "User not found");
+        }
+
+        if (!user.mfaSecret) {
+            throw new HttpError(400, "MFA secret not found. Please generate a secret first.");
+        }
+
+        const verified = speakeasy.totp.verify({
+            secret: user.mfaSecret,
+            encoding: "base32",
+            token: data.token,
+        });
+
+        if (!verified) {
+            throw new HttpError(400, "Invalid token. Please try again.");
+        }
+
+        await userRepository.updateUser(userId, { mfaEnabled: true });
+
+        return { message: "MFA enabled successfully" };
+    }
+
+    async verifyMfa(userId: string, data: VerifyMfaDto) {
+        const user = await userRepository.getUserById(userId);
+        if (!user) {
+            throw new HttpError(404, "User not found");
+        }
+
+        if (!user.mfaEnabled || !user.mfaSecret) {
+            throw new HttpError(400, "MFA is not enabled for this account");
+        }
+
+        const verified = speakeasy.totp.verify({
+            secret: user.mfaSecret,
+            encoding: "base32",
+            token: data.token,
+        });
+
+        if (!verified) {
+            throw new HttpError(400, "Invalid token");
+        }
+
+        return { verified: true };
+    }
+
+    async disableMfa(userId: string) {
+        const user = await userRepository.getUserById(userId);
+        if (!user) {
+            throw new HttpError(404, "User not found");
+        }
+
+        await userRepository.updateUser(userId, {
+            mfaEnabled: false,
+            mfaSecret: undefined
+        });
+
+        return { message: "MFA disabled successfully" };
     }
 }

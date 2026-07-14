@@ -1,7 +1,8 @@
-import { CreateUserDTO, LoginUserDto, UpdateUserDto } from "../dtos/user.dtos";
+import { CreateUserDTO, LoginUserDto, UpdateUserDto, EnableMfaDto, VerifyMfaDto } from "../dtos/user.dtos";
 import { UserService } from "../services/user.service";
 import { Request, Response } from "express";
 import passport from "../config/passport";
+import { AuthRequest } from "../middleware/authorization.middle";
 
 let userService = new UserService();
 export class AuthController{
@@ -205,6 +206,117 @@ export class AuthController{
             return res.status(200).json({
                 success: true,
                 message: "User deleted successfully"
+            });
+        } catch (error: Error | any) {
+            return res.status(error.statusCode || 500).json({
+                success: false,
+                message: error.message || "Internal Server Error"
+            });
+        }
+    }
+
+    // MFA endpoints
+    async generateMfaSecret(req: AuthRequest, res: Response) {
+        try {
+            const userId = req.user._id.toString();
+            if (!userId) {
+                return res.status(401).json({
+                    success: false,
+                    message: "User not authenticated"
+                });
+            }
+
+            const result = await userService.generateMfaSecret(userId);
+            return res.status(200).json({
+                success: true,
+                data: result
+            });
+        } catch (error: Error | any) {
+            return res.status(error.statusCode || 500).json({
+                success: false,
+                message: error.message || "Internal Server Error"
+            });
+        }
+    }
+
+    async enableMfa(req: AuthRequest, res: Response) {
+        try {
+            const userId = req.user._id.toString();
+            if (!userId) {
+                return res.status(401).json({
+                    success: false,
+                    message: "User not authenticated"
+                });
+            }
+
+            const parsedData = EnableMfaDto.safeParse(req.body);
+            if (!parsedData.success) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Validation Error",
+                    errors: parsedData.error.flatten().fieldErrors
+                });
+            }
+
+            const result = await userService.enableMfa(userId, parsedData.data);
+            return res.status(200).json({
+                success: true,
+                data: result
+            });
+        } catch (error: Error | any) {
+            return res.status(error.statusCode || 500).json({
+                success: false,
+                message: error.message || "Internal Server Error"
+            });
+        }
+    }
+
+    async verifyMfa(req: AuthRequest, res: Response) {
+        try {
+            const userId = req.user._id.toString();
+            if (!userId) {
+                return res.status(401).json({
+                    success: false,
+                    message: "User not authenticated"
+                });
+            }
+
+            const parsedData = VerifyMfaDto.safeParse(req.body);
+            if (!parsedData.success) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Validation Error",
+                    errors: parsedData.error.flatten().fieldErrors
+                });
+            }
+
+            const result = await userService.verifyMfa(userId, parsedData.data);
+            return res.status(200).json({
+                success: true,
+                data: result
+            });
+        } catch (error: Error | any) {
+            return res.status(error.statusCode || 500).json({
+                success: false,
+                message: error.message || "Internal Server Error"
+            });
+        }
+    }
+
+    async disableMfa(req: AuthRequest, res: Response) {
+        try {
+            const userId = req.user._id.toString();
+            if (!userId) {
+                return res.status(401).json({
+                    success: false,
+                    message: "User not authenticated"
+                });
+            }
+
+            const result = await userService.disableMfa(userId);
+            return res.status(200).json({
+                success: true,
+                data: result
             });
         } catch (error: Error | any) {
             return res.status(error.statusCode || 500).json({
