@@ -3,6 +3,7 @@ import { UserService } from "../services/user.service";
 import { Request, Response } from "express";
 import passport from "../config/passport";
 import { AuthRequest } from "../middleware/authorization.middle";
+import { CLIENT_URL } from "../config";
 
 let userService = new UserService();
 export class AuthController{
@@ -127,14 +128,14 @@ export class AuthController{
     googleAuthCallback = (req: Request, res: Response) => {
         passport.authenticate("google", { failureRedirect: "/login" }, (err: any, user: any) => {
             if (err || !user) {
-                return res.redirect(`${process.env.CLIENT_URL}/login?error=google_auth_failed`);
+                return res.redirect(`${CLIENT_URL}/login?error=google_auth_failed`);
             }
 
             // Generate JWT token
             const token = userService.generateToken(user.id, user.email, user.role);
 
             // Redirect to frontend with token
-            res.redirect(`${process.env.CLIENT_URL}/user/dashboard?token=${token}`);
+            res.redirect(`${CLIENT_URL}/user/dashboard?token=${token}`);
         })(req, res);
     };
 
