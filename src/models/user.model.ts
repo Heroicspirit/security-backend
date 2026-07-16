@@ -13,6 +13,9 @@ const UserSchema: Schema = new Schema({
     passwordHistory: {type: [String], default: []},
     passwordLastChanged: {type: Date, default: Date.now},
     passwordExpiryDays: {type: Number, default: 90},
+    failedLoginAttempts: {type: Number, default: 0},
+    lockUntil: {type: Date, default: null},
+    lastFailedLogin: {type: Date, default: null},
 },{
     timestamps: true,
 });
@@ -30,6 +33,9 @@ export interface IUser extends Document {
     passwordHistory: string[];
     passwordLastChanged: Date;
     passwordExpiryDays: number;
+    failedLoginAttempts: number;
+    lockUntil?: Date;
+    lastFailedLogin?: Date;
     createdAt: Date;
     updatedAt: Date;
 }
