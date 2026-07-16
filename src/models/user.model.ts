@@ -10,6 +10,9 @@ const UserSchema: Schema = new Schema({
     favoriteSongs: [{ type: Schema.Types.ObjectId, ref: 'Song' }],
     mfaEnabled: {type: Boolean, default: false},
     mfaSecret: {type: String, required: false},
+    passwordHistory: {type: [String], default: []},
+    passwordLastChanged: {type: Date, default: Date.now},
+    passwordExpiryDays: {type: Number, default: 90},
 },{
     timestamps: true,
 });
@@ -24,6 +27,9 @@ export interface IUser extends Document {
     favoriteSongs: mongoose.Types.ObjectId[];
     mfaEnabled: boolean;
     mfaSecret?: string;
+    passwordHistory: string[];
+    passwordLastChanged: Date;
+    passwordExpiryDays: number;
     createdAt: Date;
     updatedAt: Date;
 }

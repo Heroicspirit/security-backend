@@ -4,6 +4,7 @@ import { Request, Response } from "express";
 import passport from "../config/passport";
 import { AuthRequest } from "../middleware/authorization.middle";
 import { CLIENT_URL } from "../config";
+import { PasswordPolicy } from "../utils/passwordPolicy";
 
 let userService = new UserService();
 export class AuthController{
@@ -315,6 +316,29 @@ export class AuthController{
             }
 
             const result = await userService.disableMfa(userId);
+            return res.status(200).json({
+                success: true,
+                data: result
+            });
+        } catch (error: Error | any) {
+            return res.status(error.statusCode || 500).json({
+                success: false,
+                message: error.message || "Internal Server Error"
+            });
+        }
+    }
+
+    async checkPasswordStrength(req: Request, res: Response) {
+        try {
+            const { password } = req.body;
+            if (!password) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Password is required"
+                });
+            }
+
+            const result = PasswordPolicy.calculateStrength(password);
             return res.status(200).json({
                 success: true,
                 data: result

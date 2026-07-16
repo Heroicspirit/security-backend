@@ -21,4 +21,7 @@ router.post("/mfa/enable", authorizedMiddleware as any, authController.enableMfa
 router.post("/mfa/verify", authorizedMiddleware as any, authController.verifyMfa as any);
 router.post("/mfa/disable", authorizedMiddleware as any, authController.disableMfa as any);
 
+// Password strength check
+router.post("/check-password-strength", authController.checkPasswordStrength);
+
 export default router;
