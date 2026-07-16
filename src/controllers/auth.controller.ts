@@ -5,6 +5,7 @@ import passport from "../config/passport";
 import { AuthRequest } from "../middleware/authorization.middle";
 import { CLIENT_URL } from "../config";
 import { PasswordPolicy } from "../utils/passwordPolicy";
+import { sanitizeUser } from "../utils/sanitizeUser";
 
 let userService = new UserService();
 export class AuthController{
@@ -18,7 +19,7 @@ export class AuthController{
             }
             const newUser = await userService.registerUser(parsedData.data);
             return res.status(201).json(
-                    ( {success: true, data: newUser, message: (" Register success") } )
+                    ( {success: true, data: sanitizeUser(newUser), message: (" Register success") } )
                 );
             
         } catch (error: Error | any ) {
@@ -37,7 +38,7 @@ export class AuthController{
             }
                 const { token, existingUser } = await userService.loginUser(parsedData.data);
                 return res.status(200).json(
-                    { success: true, data: existingUser, token, message:" Login success"}
+                    { success: true, data: sanitizeUser(existingUser), token, message:" Login success"}
                 );
             } catch (error: Error | any) {
                 return res.status(error.statusCode || 500).json(
@@ -148,6 +149,10 @@ export class AuthController{
             const search = req.query.search as string;
             
             const result = await userService.getAllUsers(page, size, search);
+            // Sanitize user data in the result
+            if (result.user && Array.isArray(result.user)) {
+                result.user = result.user.map((user: any) => sanitizeUser(user, true));
+            }
             return res.status(200).json({
                 success: true,
                 data: result
@@ -176,7 +181,7 @@ export class AuthController{
             const user = await userService.getUserById(userId);
             return res.status(200).json({
                 success: true,
-                data: user
+                data: sanitizeUser(user, req.user.role === 'admin')
             });
         } catch (error: Error | any) {
             return res.status(error.statusCode || 500).json({
@@ -221,7 +226,7 @@ export class AuthController{
             const updatedUser = await userService.updateUser(userId, sanitizedData);
             return res.status(200).json({
                 success: true,
-                data: updatedUser,
+                data: sanitizeUser(updatedUser, req.user.role === 'admin'),
                 message: "User updated successfully"
             });
         } catch (error: Error | any) {
