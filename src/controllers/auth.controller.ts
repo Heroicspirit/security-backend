@@ -160,9 +160,19 @@ export class AuthController{
         }
     }
 
-    async getUserById(req: Request, res: Response) {
+    async getUserById(req: AuthRequest, res: Response) {
         try {
             const { userId } = req.params;
+            const requestingUserId = req.user._id.toString();
+            
+            // IDOR Protection: Only allow users to access their own data or admins to access any data
+            if (requestingUserId !== userId && req.user.role !== 'admin') {
+                return res.status(403).json({
+                    success: false,
+                    message: "Access denied. You can only view your own profile."
+                });
+            }
+            
             const user = await userService.getUserById(userId);
             return res.status(200).json({
                 success: true,
@@ -176,9 +186,19 @@ export class AuthController{
         }
     }
 
-    async updateUser(req: Request, res: Response) {
+    async updateUser(req: AuthRequest, res: Response) {
         try {
             const { userId } = req.params;
+            const requestingUserId = req.user._id.toString();
+            
+            // IDOR Protection: Only allow users to update their own data or admins to update any data
+            if (requestingUserId !== userId && req.user.role !== 'admin') {
+                return res.status(403).json({
+                    success: false,
+                    message: "Access denied. You can only update your own profile."
+                });
+            }
+            
             const parsedData = UpdateUserDto.safeParse(req.body);
             if (!parsedData.success) {
                 return res.status(400).json({
@@ -201,9 +221,19 @@ export class AuthController{
         }
     }
 
-    async deleteUser(req: Request, res: Response) {
+    async deleteUser(req: AuthRequest, res: Response) {
         try {
             const { userId } = req.params;
+            const requestingUserId = req.user._id.toString();
+            
+            // IDOR Protection: Only allow users to delete their own account or admins to delete any account
+            if (requestingUserId !== userId && req.user.role !== 'admin') {
+                return res.status(403).json({
+                    success: false,
+                    message: "Access denied. You can only delete your own account."
+                });
+            }
+            
             await userService.deleteUser(userId);
             return res.status(200).json({
                 success: true,
