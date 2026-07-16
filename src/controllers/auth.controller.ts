@@ -6,6 +6,7 @@ import { AuthRequest } from "../middleware/authorization.middle";
 import { CLIENT_URL } from "../config";
 import { PasswordPolicy } from "../utils/passwordPolicy";
 import { sanitizeUser } from "../utils/sanitizeUser";
+import { securityLogger } from "../utils/securityLogger";
 
 let userService = new UserService();
 export class AuthController{
@@ -18,6 +19,11 @@ export class AuthController{
                 );
             }
             const newUser = await userService.registerUser(parsedData.data);
+            // Log registration
+            const ip = req.ip || req.socket.remoteAddress;
+            const userAgent = req.headers['user-agent'];
+            securityLogger.logRegistration(newUser._id.toString(), newUser.email, ip);
+            
             return res.status(201).json(
                     ( {success: true, data: sanitizeUser(newUser), message: (" Register success") } )
                 );
@@ -29,6 +35,10 @@ export class AuthController{
         }
     }
     async login(req: Request, res: Response) {
+        const ip = req.ip || req.socket.remoteAddress;
+        const userAgent = req.headers['user-agent'];
+        const email = req.body.email;
+        
         try {
             const parsedData = LoginUserDto.safeParse(req.body);
             if(!parsedData.success) {
@@ -37,10 +47,16 @@ export class AuthController{
                 );
             }
                 const { token, existingUser } = await userService.loginUser(parsedData.data);
+                // Log successful login
+                securityLogger.logLoginSuccess(existingUser._id.toString(), existingUser.email, ip, userAgent);
+                
                 return res.status(200).json(
                     { success: true, data: sanitizeUser(existingUser), token, message:" Login success"}
                 );
             } catch (error: Error | any) {
+                // Log failed login
+                securityLogger.logLoginFailed(email, ip, userAgent, error.message);
+                
                 return res.status(error.statusCode || 500).json(
                     {success: false, message:error.message || "Internet Server Error"}
                 );
@@ -307,6 +323,10 @@ export class AuthController{
             }
 
             const result = await userService.enableMfa(userId, parsedData.data);
+            // Log MFA enable
+            const ip = req.ip || req.socket.remoteAddress;
+            securityLogger.logMfaEnabled(userId, req.user.email, ip);
+            
             return res.status(200).json({
                 success: true,
                 data: result
