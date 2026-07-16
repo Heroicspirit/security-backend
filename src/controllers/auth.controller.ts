@@ -207,7 +207,18 @@ export class AuthController{
                     errors: parsedData.error.flatten().fieldErrors
                 });
             }
-            const updatedUser = await userService.updateUser(userId, parsedData.data);
+            
+            // Mass Assignment Protection: Filter sensitive fields for non-admin users
+            const sensitiveFields = ['role', 'mfaEnabled', 'mfaSecret', 'passwordHistory', 'passwordLastChanged', 'passwordExpiryDays', 'failedLoginAttempts', 'lockUntil', 'lastFailedLogin', 'googleId', 'favoriteSongs'];
+            const sanitizedData: any = { ...parsedData.data };
+            
+            if (req.user.role !== 'admin') {
+                sensitiveFields.forEach(field => {
+                    delete sanitizedData[field];
+                });
+            }
+            
+            const updatedUser = await userService.updateUser(userId, sanitizedData);
             return res.status(200).json({
                 success: true,
                 data: updatedUser,
