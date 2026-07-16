@@ -58,11 +58,40 @@ export class UserService {
         if(!existingUser) {
             throw new HttpError(404, "Email not found");
         }
+
+        // Check if account is locked
+        if (existingUser.lockUntil && new Date(existingUser.lockUntil) > new Date()) {
+            const lockTimeRemaining = Math.ceil((new Date(existingUser.lockUntil).getTime() - Date.now()) / (1000 * 60));
+            throw new HttpError(403, `Account is locked. Try again in ${lockTimeRemaining} minutes.`);
+        }
+
         const isPasswordValid = await bcryptjs.compare(data.password, existingUser.password);
         if(!isPasswordValid) {
-            throw new HttpError(401, "Invalid credentials");
+            // Increment failed login attempts
+            const failedAttempts = (existingUser.failedLoginAttempts || 0) + 1;
+            const maxAttempts = 5;
+            const lockDurationMinutes = 15;
+
+            if (failedAttempts >= maxAttempts) {
+                // Lock the account
+                const lockUntil = new Date(Date.now() + lockDurationMinutes * 60 * 1000);
+                await userRepository.updateUser(existingUser._id.toString(), {
+                    failedLoginAttempts: failedAttempts,
+                    lockUntil: lockUntil,
+                    lastFailedLogin: new Date()
+                });
+                throw new HttpError(403, `Too many failed attempts. Account locked for ${lockDurationMinutes} minutes.`);
+            } else {
+                // Update failed attempts
+                await userRepository.updateUser(existingUser._id.toString(), {
+                    failedLoginAttempts: failedAttempts,
+                    lastFailedLogin: new Date()
+                });
+                const attemptsRemaining = maxAttempts - failedAttempts;
+                throw new HttpError(401, `Invalid credentials. ${attemptsRemaining} attempts remaining.`);
+            }
         }
-        
+
         // Check password expiry
         if (existingUser.passwordLastChanged) {
             const daysSinceChange = Math.floor((Date.now() - new Date(existingUser.passwordLastChanged).getTime()) / (1000 * 60 * 60 * 24));
@@ -71,7 +100,16 @@ export class UserService {
                 throw new HttpError(403, "Password has expired. Please reset your password.");
             }
         }
-        
+
+        // Reset failed login attempts on successful login
+        if (existingUser.failedLoginAttempts > 0) {
+            await userRepository.updateUser(existingUser._id.toString(), {
+                failedLoginAttempts: 0,
+                lockUntil: undefined,
+                lastFailedLogin: undefined
+            });
+        }
+
         const token = this.generateToken(existingUser._id, existingUser.email, existingUser.role);
         return { token, existingUser}
     }
