@@ -8,6 +8,7 @@ import { PasswordPolicy } from "../utils/passwordPolicy";
 import { sanitizeUser } from "../utils/sanitizeUser";
 import { securityLogger } from "../utils/securityLogger";
 import { captchaService } from "../utils/captcha";
+import { bruteForceProtection } from "../middleware/bruteForce.middleware";
 
 let userService = new UserService();
 export class AuthController{
@@ -19,6 +20,15 @@ export class AuthController{
                     ( {success: false, message: "Validation Error", errors: parsedData.error.flatten().fieldErrors} )
                 );
             }
+
+            // Validate CAPTCHA
+            const captchaValid = captchaService.verifyCaptcha(parsedData.data.captchaSessionId, parsedData.data.captchaCode);
+            if (!captchaValid) {
+                return res.status(400).json(
+                    { success: false, message: "Invalid or expired CAPTCHA" }
+                );
+            }
+
             const newUser = await userService.registerUser(parsedData.data);
             // Log registration
             const ip = req.ip || req.socket.remoteAddress;
@@ -51,12 +61,16 @@ export class AuthController{
             // Validate CAPTCHA
             const captchaValid = captchaService.verifyCaptcha(parsedData.data.captchaSessionId, parsedData.data.captchaCode);
             if (!captchaValid) {
+                // Record failed attempt for CAPTCHA failure
+                bruteForceProtection.recordFailedAttempt(email);
                 return res.status(400).json(
                     { success: false, message: "Invalid or expired CAPTCHA" }
                 );
             }
 
                 const { token, existingUser } = await userService.loginUser(parsedData.data);
+                // Record successful login attempt
+                bruteForceProtection.recordSuccessfulAttempt(email);
                 // Log successful login
                 securityLogger.logLoginSuccess(existingUser._id.toString(), existingUser.email, ip, userAgent);
                 
@@ -64,6 +78,8 @@ export class AuthController{
                     { success: true, data: sanitizeUser(existingUser), token, message:" Login success"}
                 );
             } catch (error: Error | any) {
+                // Record failed login attempt
+                bruteForceProtection.recordFailedAttempt(email);
                 // Log failed login
                 securityLogger.logLoginFailed(email, ip, userAgent, error.message);
                 
@@ -441,6 +457,26 @@ export class AuthController{
             return res.status(200).json({
                 success: true,
                 data: result
+            });
+        } catch (error: Error | any) {
+            return res.status(error.statusCode || 500).json({
+                success: false,
+                message: error.message || "Internal Server Error"
+            });
+        }
+    }
+
+    async generateCaptcha(req: Request, res: Response) {
+        try {
+            const sessionId = captchaService.generateSessionId();
+            const { code, image } = captchaService.generateCaptcha(sessionId);
+            
+            return res.status(200).json({
+                success: true,
+                data: {
+                    sessionId,
+                    image
+                }
             });
         } catch (error: Error | any) {
             return res.status(error.statusCode || 500).json({

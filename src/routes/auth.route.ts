@@ -2,8 +2,8 @@ import { Router } from "express";
 import { AuthController } from "../controllers/auth.controller";
 import { authorizedMiddleware } from "../middleware/authorization.middle";
 import { authRateLimit, sensitiveRateLimit } from "../middleware/rateLimit.middleware";
-import { checkBruteForce, recordFailedLogin, recordSuccessfulLogin } from "../middleware/bruteForce.middleware";
-import { ipBlockMiddleware, authFailureMiddleware } from "../middleware/ipBlock.middleware";
+import { checkBruteForce } from "../middleware/bruteForce.middleware";
+import { ipBlockMiddleware } from "../middleware/ipBlock.middleware";
 
 let authController = new AuthController();
 
@@ -32,5 +32,8 @@ router.post("/mfa/disable", authorizedMiddleware as any, authController.disableM
 
 // Password strength check
 router.post("/check-password-strength", authController.checkPasswordStrength);
+
+// CAPTCHA generation
+router.get("/captcha", authRateLimit, authController.generateCaptcha);
 
 export default router;
