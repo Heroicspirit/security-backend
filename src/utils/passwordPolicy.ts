@@ -2,7 +2,7 @@ import z from 'zod';
 
 // Password policy configuration
 export const PASSWORD_POLICY = {
-  minLength: 12,
+  minLength: 8,
   maxLength: 128,
   requireUppercase: true,
   requireLowercase: true,
