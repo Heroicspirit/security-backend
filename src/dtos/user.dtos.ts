@@ -34,6 +34,8 @@ export type createUserDto = z.infer<typeof CreateUserDTO>;
 export const LoginUserDto = z.object({
     email: z.string().min(6),
     password: z.string().min(6),
+    captchaSessionId: z.string().min(1, "CAPTCHA session ID is required"),
+    captchaCode: z.string().min(1, "CAPTCHA code is required"),
 })
 export type LoginUserDto = z.infer<typeof LoginUserDto>
 

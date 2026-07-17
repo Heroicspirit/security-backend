@@ -7,6 +7,7 @@ import { CLIENT_URL } from "../config";
 import { PasswordPolicy } from "../utils/passwordPolicy";
 import { sanitizeUser } from "../utils/sanitizeUser";
 import { securityLogger } from "../utils/securityLogger";
+import { captchaService } from "../utils/captcha";
 
 let userService = new UserService();
 export class AuthController{
@@ -46,6 +47,15 @@ export class AuthController{
                     { success: false, message: "Validation Error", errors: parsedData.error.flatten().fieldErrors }
                 );
             }
+
+            // Validate CAPTCHA
+            const captchaValid = captchaService.verifyCaptcha(parsedData.data.captchaSessionId, parsedData.data.captchaCode);
+            if (!captchaValid) {
+                return res.status(400).json(
+                    { success: false, message: "Invalid or expired CAPTCHA" }
+                );
+            }
+
                 const { token, existingUser } = await userService.loginUser(parsedData.data);
                 // Log successful login
                 securityLogger.logLoginSuccess(existingUser._id.toString(), existingUser.email, ip, userAgent);
