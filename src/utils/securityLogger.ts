@@ -13,6 +13,8 @@ export enum SecurityEventType {
   MFA_DISABLED = 'MFA_DISABLED',
   ADMIN_ACTION = 'ADMIN_ACTION',
   PROFILE_UPDATE = 'PROFILE_UPDATE',
+  PROFILE_EXPORT = 'PROFILE_EXPORT',
+  PROFILE_IMPORT = 'PROFILE_IMPORT',
   LOGOUT = 'LOGOUT',
   UNAUTHORIZED_ACCESS = 'UNAUTHORIZED_ACCESS'
 }
@@ -105,6 +107,14 @@ class SecurityLogger {
 
   logProfileUpdate(userId: string, email: string, ip?: string) {
     this.log(SecurityEventType.PROFILE_UPDATE, userId, email, ip);
+  }
+
+  logProfileExport(userId: string, email: string, ip?: string) {
+    this.log(SecurityEventType.PROFILE_EXPORT, userId, email, ip);
+  }
+
+  logProfileImport(userId: string, email: string, ip?: string, details?: any) {
+    this.log(SecurityEventType.PROFILE_IMPORT, userId, email, ip, undefined, details);
   }
 
   logLogout(userId: string, email: string, ip?: string) {

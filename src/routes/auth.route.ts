@@ -36,4 +36,8 @@ router.post("/check-password-strength", authController.checkPasswordStrength);
 // CAPTCHA generation
 router.get("/captcha", authController.generateCaptcha);
 
+// Profile export/import (protected)
+router.get("/profile/export", authorizedMiddleware as any, authController.exportProfile as any);
+router.post("/profile/import", authorizedMiddleware as any, authController.importProfile as any);
+
 export default router;

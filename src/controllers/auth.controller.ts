@@ -464,13 +464,67 @@ export class AuthController{
         try {
             const sessionId = captchaService.generateSessionId();
             const { code, image } = captchaService.generateCaptcha(sessionId);
-            
+
             return res.status(200).json({
                 success: true,
                 data: {
                     sessionId,
                     image
                 }
+            });
+        } catch (error: Error | any) {
+            return res.status(error.statusCode || 500).json({
+                success: false,
+                message: error.message || "Internal Server Error"
+            });
+        }
+    }
+
+    async exportProfile(req: AuthRequest, res: Response) {
+        try {
+            const userId = req.user._id.toString();
+            const ip = req.ip || req.socket.remoteAddress;
+
+            const profileData = await userService.exportProfile(userId);
+
+            // Log profile export
+            securityLogger.logProfileExport(userId, req.user.email, ip);
+
+            return res.status(200).json({
+                success: true,
+                data: profileData
+            });
+        } catch (error: Error | any) {
+            return res.status(error.statusCode || 500).json({
+                success: false,
+                message: error.message || "Internal Server Error"
+            });
+        }
+    }
+
+    async importProfile(req: AuthRequest, res: Response) {
+        try {
+            const userId = req.user._id.toString();
+            const ip = req.ip || req.socket.remoteAddress;
+            const { name, profilePicture, favoriteSongs } = req.body;
+
+            const updatedUser = await userService.importProfile(userId, { name, profilePicture, favoriteSongs });
+
+            if (!updatedUser) {
+                return res.status(404).json({
+                    success: false,
+                    message: "User not found"
+                });
+            }
+
+            // Log profile import with the actual fields that were updated
+            const importedFields = ['name', 'profilePicture', 'favoriteSongs'].filter(f => req.body[f] !== undefined);
+            securityLogger.logProfileImport(userId, req.user.email, ip, { fields: importedFields });
+
+            return res.status(200).json({
+                success: true,
+                data: sanitizeUser(updatedUser.toObject()),
+                message: "Profile imported successfully"
             });
         } catch (error: Error | any) {
             return res.status(error.statusCode || 500).json({
