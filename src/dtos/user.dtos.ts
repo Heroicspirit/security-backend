@@ -10,9 +10,7 @@ export const CreateUserDTO = z.object({
     password: passwordSchema,
     confirmPassword: z.string().min(8, "Confirm password is required"),
     role: z.enum(["user", "admin"]).optional().default("user"),
-    profilePicture: z.string().optional(),
-    captchaSessionId: z.string().min(1, "CAPTCHA session ID is required"),
-    captchaCode: z.string().min(1, "CAPTCHA code is required"),
+    profilePicture: z.string().optional()
 }).extend({
     confirmPassword: z.string().min(8),
 }).refine(

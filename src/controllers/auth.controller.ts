@@ -21,14 +21,6 @@ export class AuthController{
                 );
             }
 
-            // Validate CAPTCHA
-            const captchaValid = captchaService.verifyCaptcha(parsedData.data.captchaSessionId, parsedData.data.captchaCode);
-            if (!captchaValid) {
-                return res.status(400).json(
-                    { success: false, message: "Invalid or expired CAPTCHA" }
-                );
-            }
-
             const newUser = await userService.registerUser(parsedData.data);
             // Log registration
             const ip = req.ip || req.socket.remoteAddress;
