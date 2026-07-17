@@ -109,7 +109,11 @@ export class AuthController{
     async sendResetPasswordEmail(req: Request, res: Response) {
         try {
             const email = req.body.email;
+            const ip = req.ip || req.socket.remoteAddress;
             const user = await userService.sendResetPasswordEmail(email);
+            // Log password reset request
+            securityLogger.logPasswordResetRequest(email, ip);
+            
             return res.status(200).json(
                 {
                     success: true,
@@ -126,10 +130,13 @@ export class AuthController{
 
     async resetPassword(req: Request, res: Response) {
         try {
-
             const token = req.params.token as string;
             const { newPassword } = req.body;
-            await userService.resetPassword(token, newPassword);
+            const ip = req.ip || req.socket.remoteAddress;
+            const user = await userService.resetPassword(token, newPassword);
+            // Log password reset success
+            securityLogger.logPasswordResetSuccess(user._id.toString(), user.email, ip);
+            
             return res.status(200).json(
                 { success: true, message: "Password has been reset successfully." }
             );
@@ -240,6 +247,10 @@ export class AuthController{
             }
             
             const updatedUser = await userService.updateUser(userId, sanitizedData);
+            // Log profile update
+            const ip = req.ip || req.socket.remoteAddress;
+            securityLogger.logProfileUpdate(userId, req.user.email, ip);
+            
             return res.status(200).json({
                 success: true,
                 data: sanitizeUser(updatedUser, req.user.role === 'admin'),
@@ -267,6 +278,10 @@ export class AuthController{
             }
             
             await userService.deleteUser(userId);
+            // Log admin action for user deletion
+            const ip = req.ip || req.socket.remoteAddress;
+            securityLogger.logAdminAction(userId, req.user.email, 'DELETE_USER', ip, { deletedUserId: userId });
+            
             return res.status(200).json({
                 success: true,
                 message: "User deleted successfully"
@@ -359,6 +374,10 @@ export class AuthController{
             }
 
             const result = await userService.verifyMfa(userId, parsedData.data);
+            // Log MFA verification success
+            const ip = req.ip || req.socket.remoteAddress;
+            securityLogger.logLoginSuccess(userId, req.user.email, ip, req.headers['user-agent']);
+            
             return res.status(200).json({
                 success: true,
                 data: result
@@ -382,6 +401,10 @@ export class AuthController{
             }
 
             const result = await userService.disableMfa(userId);
+            // Log MFA disable
+            const ip = req.ip || req.socket.remoteAddress;
+            securityLogger.logMfaDisabled(userId, req.user.email, ip);
+            
             return res.status(200).json({
                 success: true,
                 data: result
