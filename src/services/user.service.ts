@@ -10,6 +10,7 @@ import QRCode from "qrcode";
 import { PasswordPolicy, PASSWORD_POLICY } from "../utils/passwordPolicy";
 import { RefreshTokenModel } from "../models/refreshToken.model";
 import crypto from "crypto";
+import { encrypt, decrypt } from "../utils/encryption";
 
 
 
@@ -275,7 +276,9 @@ export class UserService {
             issuer: "SecurityApp",
         });
 
-        await userRepository.updateUser(userId, { mfaSecret: secret.base32 });
+        // Encrypt the MFA secret before storing in database
+        const encryptedSecret = encrypt(secret.base32);
+        await userRepository.updateUser(userId, { mfaSecret: encryptedSecret });
 
         const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url || "");
 
@@ -296,8 +299,16 @@ export class UserService {
             throw new HttpError(400, "MFA secret not found. Please generate a secret first.");
         }
 
+        // Decrypt the MFA secret for verification
+        let decryptedSecret: string;
+        try {
+            decryptedSecret = decrypt(user.mfaSecret);
+        } catch {
+            throw new HttpError(500, "Failed to decrypt MFA secret");
+        }
+
         const verified = speakeasy.totp.verify({
-            secret: user.mfaSecret,
+            secret: decryptedSecret,
             encoding: "base32",
             token: data.token,
         });
@@ -321,8 +332,16 @@ export class UserService {
             throw new HttpError(400, "MFA is not enabled for this account");
         }
 
+        // Decrypt the MFA secret for verification
+        let decryptedSecret: string;
+        try {
+            decryptedSecret = decrypt(user.mfaSecret);
+        } catch {
+            throw new HttpError(500, "Failed to decrypt MFA secret");
+        }
+
         const verified = speakeasy.totp.verify({
-            secret: user.mfaSecret,
+            secret: decryptedSecret,
             encoding: "base32",
             token: data.token,
         });
@@ -403,25 +422,32 @@ export class UserService {
         const token = this.generateRefreshToken();
         const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
 
+        // Create deterministic SHA-256 hash for lookup + encrypt token for at-rest protection
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+        const encryptedToken = encrypt(token);
+
         await RefreshTokenModel.create({
-            token,
+            tokenHash,
+            token: encryptedToken,
             userId,
             deviceInfo,
             expiresAt
         });
 
-        return token;
+        return token; // Return the unencrypted token to the client
     }
 
     async verifyRefreshToken(token: string) {
-        const refreshToken = await RefreshTokenModel.findOne({ token, isRevoked: false });
+        // Hash the provided token for deterministic lookup
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+        const refreshToken = await RefreshTokenModel.findOne({ tokenHash, isRevoked: false });
         
         if (!refreshToken) {
             throw new HttpError(401, "Invalid refresh token");
         }
 
         if (new Date() > refreshToken.expiresAt) {
-            await RefreshTokenModel.deleteOne({ token });
+            await RefreshTokenModel.deleteOne({ tokenHash });
             throw new HttpError(401, "Refresh token expired");
         }
 
@@ -429,8 +455,10 @@ export class UserService {
     }
 
     async revokeRefreshToken(token: string) {
+        // Hash the provided token for deterministic lookup
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
         await RefreshTokenModel.updateOne(
-            { token },
+            { tokenHash },
             { isRevoked: true, revokedAt: new Date() }
         );
     }
