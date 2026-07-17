@@ -7,6 +7,7 @@ import authRoutes from "./routes/auth.route";
 import productRoutes from "./routes/product.route";
 import orderRoutes from "./routes/order.route";
 import path from "path";
+import { generalRateLimit } from "./middleware/rateLimit.middleware";
 
 const app = express();
 
@@ -27,6 +28,9 @@ app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:3001',
   credentials: true,
 }));
+
+// Apply global rate limiting
+app.use(generalRateLimit);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
