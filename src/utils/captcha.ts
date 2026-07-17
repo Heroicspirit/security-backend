@@ -19,7 +19,7 @@ class CaptchaService {
   generateCaptcha(sessionId: string): { code: string; image: string } {
     // Generate a random 6-digit code
     const code = this.generateRandomCode();
-    
+
     // Store the session
     this.sessions.set(sessionId, {
       code,
@@ -79,8 +79,8 @@ class CaptchaService {
     // Increment attempts
     session.attempts++;
 
-    // Verify code (case-insensitive)
-    const isValid = userCode.toUpperCase() === session.code.toUpperCase();
+    // Verify code (case-sensitive)
+    const isValid = userCode === session.code;
 
     // Remove session if valid or max attempts reached
     if (isValid || session.attempts >= this.MAX_ATTEMPTS) {

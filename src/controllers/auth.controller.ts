@@ -65,9 +65,11 @@ export class AuthController{
                 bruteForceProtection.recordSuccessfulAttempt(email);
                 // Log successful login
                 securityLogger.logLoginSuccess(existingUser._id.toString(), existingUser.email, ip, userAgent);
-                
+
+                const sanitizedUser = sanitizeUser(existingUser.toObject());
+
                 return res.status(200).json(
-                    { success: true, data: sanitizeUser(existingUser), token, message:" Login success"}
+                    { success: true, data: sanitizedUser, token, message:" Login success"}
                 );
             } catch (error: Error | any) {
                 // Record failed login attempt

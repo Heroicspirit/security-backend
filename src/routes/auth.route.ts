@@ -34,6 +34,6 @@ router.post("/mfa/disable", authorizedMiddleware as any, authController.disableM
 router.post("/check-password-strength", authController.checkPasswordStrength);
 
 // CAPTCHA generation
-router.get("/captcha", authRateLimit, authController.generateCaptcha);
+router.get("/captcha", authController.generateCaptcha);
 
 export default router;
