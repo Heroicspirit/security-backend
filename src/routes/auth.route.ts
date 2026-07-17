@@ -40,4 +40,9 @@ router.get("/captcha", authController.generateCaptcha);
 router.get("/profile/export", authorizedMiddleware as any, authController.exportProfile as any);
 router.post("/profile/import", authorizedMiddleware as any, authController.importProfile as any);
 
+// Session management routes
+router.post("/refresh-token", authController.refreshToken as any);
+router.post("/logout", authorizedMiddleware as any, authController.logout as any);
+router.post("/logout-all", authorizedMiddleware as any, authController.logoutAll as any);
+
 export default router;

@@ -8,6 +8,8 @@ import { sendEmail } from "../config/email";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
 import { PasswordPolicy, PASSWORD_POLICY } from "../utils/passwordPolicy";
+import { RefreshTokenModel } from "../models/refreshToken.model";
+import crypto from "crypto";
 
 
 
@@ -381,5 +383,62 @@ export class UserService {
 
         const updatedUser = await userRepository.updateUser(userId, updateData);
         return updatedUser;
+    }
+
+    // Refresh token methods
+    generateAccessToken(userId: any, email: string, role: string) {
+        const payload = {
+            id: userId.toString(),
+            email,
+            role
+        };
+        return jwt.sign(payload, JWT_SECRET, { expiresIn: '15m' }); // Short-lived access token
+    }
+
+    generateRefreshToken(): string {
+        return crypto.randomBytes(64).toString('hex');
+    }
+
+    async createRefreshToken(userId: string, deviceInfo: any) {
+        const token = this.generateRefreshToken();
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+
+        await RefreshTokenModel.create({
+            token,
+            userId,
+            deviceInfo,
+            expiresAt
+        });
+
+        return token;
+    }
+
+    async verifyRefreshToken(token: string) {
+        const refreshToken = await RefreshTokenModel.findOne({ token, isRevoked: false });
+        
+        if (!refreshToken) {
+            throw new HttpError(401, "Invalid refresh token");
+        }
+
+        if (new Date() > refreshToken.expiresAt) {
+            await RefreshTokenModel.deleteOne({ token });
+            throw new HttpError(401, "Refresh token expired");
+        }
+
+        return refreshToken;
+    }
+
+    async revokeRefreshToken(token: string) {
+        await RefreshTokenModel.updateOne(
+            { token },
+            { isRevoked: true, revokedAt: new Date() }
+        );
+    }
+
+    async revokeAllUserTokens(userId: string) {
+        await RefreshTokenModel.updateMany(
+            { userId },
+            { isRevoked: true, revokedAt: new Date() }
+        );
     }
 }

@@ -16,6 +16,14 @@ const UserSchema: Schema = new Schema({
     failedLoginAttempts: {type: Number, default: 0},
     lockUntil: {type: Date, default: null},
     lastFailedLogin: {type: Date, default: null},
+    // Device/Session binding fields
+    devices: [{
+        deviceFingerprint: { type: String, required: true },
+        userAgent: { type: String, required: true },
+        lastUsed: { type: Date, default: Date.now },
+        isTrusted: { type: Boolean, default: false }
+    }],
+    currentDeviceFingerprint: { type: String, default: null }
 },{
     timestamps: true,
 });
@@ -36,6 +44,13 @@ export interface IUser extends Document {
     failedLoginAttempts: number;
     lockUntil?: Date;
     lastFailedLogin?: Date;
+    devices: Array<{
+        deviceFingerprint: string;
+        userAgent: string;
+        lastUsed: Date;
+        isTrusted: boolean;
+    }>;
+    currentDeviceFingerprint?: string;
     createdAt: Date;
     updatedAt: Date;
 }
