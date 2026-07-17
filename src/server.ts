@@ -1,12 +1,14 @@
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
+import cookieParser from "cookie-parser";
 import { PORT } from "./config";
 import { connectDatabase } from "./database/mongodb";
 import authRoutes from "./routes/auth.route";
 import productRoutes from "./routes/product.route";
 import orderRoutes from "./routes/order.route";
 import path from "path";
+import { generalRateLimit } from "./middleware/rateLimit.middleware";
 
 const app = express();
 
@@ -28,6 +30,10 @@ app.use(cors({
   credentials: true,
 }));
 
+// Apply global rate limiting
+app.use(generalRateLimit);
+
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

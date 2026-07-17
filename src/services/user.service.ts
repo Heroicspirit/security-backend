@@ -8,6 +8,8 @@ import { sendEmail } from "../config/email";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
 import { PasswordPolicy, PASSWORD_POLICY } from "../utils/passwordPolicy";
+import { RefreshTokenModel } from "../models/refreshToken.model";
+import crypto from "crypto";
 
 
 
@@ -344,5 +346,99 @@ export class UserService {
         });
 
         return { message: "MFA disabled successfully" };
+    }
+
+    async exportProfile(userId: string) {
+        const user = await userRepository.getUserById(userId);
+        if (!user) {
+            throw new HttpError(404, "User not found");
+        }
+
+        // Export only safe profile data (exclude sensitive fields)
+        const profileData = {
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            profilePicture: user.profilePicture,
+            favoriteSongs: user.favoriteSongs,
+            mfaEnabled: user.mfaEnabled,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt
+        };
+
+        return profileData;
+    }
+
+    async importProfile(userId: string, data: { name?: string; profilePicture?: string; favoriteSongs?: any[] }) {
+        const user = await userRepository.getUserById(userId);
+        if (!user) {
+            throw new HttpError(404, "User not found");
+        }
+
+        // Import only allowed fields (email and role cannot be changed)
+        const updateData: any = {};
+        if (data.name) updateData.name = data.name;
+        if (data.profilePicture !== undefined) updateData.profilePicture = data.profilePicture;
+        if (data.favoriteSongs !== undefined) updateData.favoriteSongs = data.favoriteSongs;
+
+        const updatedUser = await userRepository.updateUser(userId, updateData);
+        return updatedUser;
+    }
+
+    // Refresh token methods
+    generateAccessToken(userId: any, email: string, role: string) {
+        const payload = {
+            id: userId.toString(),
+            email,
+            role
+        };
+        return jwt.sign(payload, JWT_SECRET, { expiresIn: '15m' }); // Short-lived access token
+    }
+
+    generateRefreshToken(): string {
+        return crypto.randomBytes(64).toString('hex');
+    }
+
+    async createRefreshToken(userId: string, deviceInfo: any) {
+        const token = this.generateRefreshToken();
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+
+        await RefreshTokenModel.create({
+            token,
+            userId,
+            deviceInfo,
+            expiresAt
+        });
+
+        return token;
+    }
+
+    async verifyRefreshToken(token: string) {
+        const refreshToken = await RefreshTokenModel.findOne({ token, isRevoked: false });
+        
+        if (!refreshToken) {
+            throw new HttpError(401, "Invalid refresh token");
+        }
+
+        if (new Date() > refreshToken.expiresAt) {
+            await RefreshTokenModel.deleteOne({ token });
+            throw new HttpError(401, "Refresh token expired");
+        }
+
+        return refreshToken;
+    }
+
+    async revokeRefreshToken(token: string) {
+        await RefreshTokenModel.updateOne(
+            { token },
+            { isRevoked: true, revokedAt: new Date() }
+        );
+    }
+
+    async revokeAllUserTokens(userId: string) {
+        await RefreshTokenModel.updateMany(
+            { userId },
+            { isRevoked: true, revokedAt: new Date() }
+        );
     }
 }

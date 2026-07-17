@@ -7,6 +7,9 @@ import { CLIENT_URL } from "../config";
 import { PasswordPolicy } from "../utils/passwordPolicy";
 import { sanitizeUser } from "../utils/sanitizeUser";
 import { securityLogger } from "../utils/securityLogger";
+import { captchaService } from "../utils/captcha";
+import { bruteForceProtection } from "../middleware/bruteForce.middleware";
+import { extractDeviceInfo } from "../utils/deviceFingerprint";
 
 let userService = new UserService();
 export class AuthController{
@@ -18,6 +21,7 @@ export class AuthController{
                     ( {success: false, message: "Validation Error", errors: parsedData.error.flatten().fieldErrors} )
                 );
             }
+
             const newUser = await userService.registerUser(parsedData.data);
             // Log registration
             const ip = req.ip || req.socket.remoteAddress;
@@ -46,14 +50,53 @@ export class AuthController{
                     { success: false, message: "Validation Error", errors: parsedData.error.flatten().fieldErrors }
                 );
             }
-                const { token, existingUser } = await userService.loginUser(parsedData.data);
+
+            // Validate CAPTCHA
+            const captchaValid = captchaService.verifyCaptcha(parsedData.data.captchaSessionId, parsedData.data.captchaCode);
+            if (!captchaValid) {
+                // Record failed attempt for CAPTCHA failure
+                bruteForceProtection.recordFailedAttempt(email);
+                return res.status(400).json(
+                    { success: false, message: "Invalid or expired CAPTCHA" }
+                );
+            }
+
+                const { existingUser } = await userService.loginUser(parsedData.data);
+                // Record successful login attempt
+                bruteForceProtection.recordSuccessfulAttempt(email);
                 // Log successful login
                 securityLogger.logLoginSuccess(existingUser._id.toString(), existingUser.email, ip, userAgent);
+
+                const sanitizedUser = sanitizeUser(existingUser.toObject());
                 
+                // Generate device info and tokens
+                const deviceInfo = extractDeviceInfo(req);
+                const accessToken = userService.generateAccessToken(existingUser._id, existingUser.email, existingUser.role);
+                const refreshToken = await userService.createRefreshToken(existingUser._id.toString(), deviceInfo);
+
+                // Set HttpOnly, Secure, SameSite=Strict cookies
+                res.cookie('accessToken', accessToken, {
+                    httpOnly: true,
+                    secure: process.env.NODE_ENV === 'production',
+                    sameSite: 'strict',
+                    maxAge: 15 * 60 * 1000, // 15 minutes
+                    path: '/'
+                });
+
+                res.cookie('refreshToken', refreshToken, {
+                    httpOnly: true,
+                    secure: process.env.NODE_ENV === 'production',
+                    sameSite: 'strict',
+                    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+                    path: '/'
+                });
+
                 return res.status(200).json(
-                    { success: true, data: sanitizeUser(existingUser), token, message:" Login success"}
+                    { success: true, data: sanitizedUser, message: "Login success" }
                 );
             } catch (error: Error | any) {
+                // Record failed login attempt
+                bruteForceProtection.recordFailedAttempt(email);
                 // Log failed login
                 securityLogger.logLoginFailed(email, ip, userAgent, error.message);
                 
@@ -431,6 +474,205 @@ export class AuthController{
             return res.status(200).json({
                 success: true,
                 data: result
+            });
+        } catch (error: Error | any) {
+            return res.status(error.statusCode || 500).json({
+                success: false,
+                message: error.message || "Internal Server Error"
+            });
+        }
+    }
+
+    async generateCaptcha(req: Request, res: Response) {
+        try {
+            const sessionId = captchaService.generateSessionId();
+            const { code, image } = captchaService.generateCaptcha(sessionId);
+
+            return res.status(200).json({
+                success: true,
+                data: {
+                    sessionId,
+                    image
+                }
+            });
+        } catch (error: Error | any) {
+            return res.status(error.statusCode || 500).json({
+                success: false,
+                message: error.message || "Internal Server Error"
+            });
+        }
+    }
+
+    async exportProfile(req: AuthRequest, res: Response) {
+        try {
+            const userId = req.user._id.toString();
+            const ip = req.ip || req.socket.remoteAddress;
+
+            const profileData = await userService.exportProfile(userId);
+
+            // Log profile export
+            securityLogger.logProfileExport(userId, req.user.email, ip);
+
+            return res.status(200).json({
+                success: true,
+                data: profileData
+            });
+        } catch (error: Error | any) {
+            return res.status(error.statusCode || 500).json({
+                success: false,
+                message: error.message || "Internal Server Error"
+            });
+        }
+    }
+
+    async importProfile(req: AuthRequest, res: Response) {
+        try {
+            const userId = req.user._id.toString();
+            const ip = req.ip || req.socket.remoteAddress;
+            const { name, profilePicture, favoriteSongs } = req.body;
+
+            const updatedUser = await userService.importProfile(userId, { name, profilePicture, favoriteSongs });
+
+            if (!updatedUser) {
+                return res.status(404).json({
+                    success: false,
+                    message: "User not found"
+                });
+            }
+
+            // Log profile import with the actual fields that were updated
+            const importedFields = ['name', 'profilePicture', 'favoriteSongs'].filter(f => req.body[f] !== undefined);
+            securityLogger.logProfileImport(userId, req.user.email, ip, { fields: importedFields });
+
+            return res.status(200).json({
+                success: true,
+                data: sanitizeUser(updatedUser.toObject()),
+                message: "Profile imported successfully"
+            });
+        } catch (error: Error | any) {
+            return res.status(error.statusCode || 500).json({
+                success: false,
+                message: error.message || "Internal Server Error"
+            });
+        }
+    }
+
+    async refreshToken(req: Request, res: Response) {
+        try {
+            const refreshToken = req.cookies.refreshToken;
+            
+            if (!refreshToken) {
+                return res.status(401).json({
+                    success: false,
+                    message: "Refresh token not found"
+                });
+            }
+
+            const tokenData = await userService.verifyRefreshToken(refreshToken);
+            const user = await userService.getUserById(tokenData.userId.toString());
+
+            if (!user) {
+                return res.status(404).json({
+                    success: false,
+                    message: "User not found"
+                });
+            }
+
+            // Verify device binding
+            const currentDeviceInfo = extractDeviceInfo(req);
+            if (currentDeviceInfo.deviceFingerprint !== tokenData.deviceInfo.deviceFingerprint) {
+                await userService.revokeRefreshToken(refreshToken);
+                securityLogger.logSecurityEvent(user._id.toString(), user.email, req.ip, 'DEVICE_MISMATCH_REFRESH_TOKEN');
+                return res.status(403).json({
+                    success: false,
+                    message: "Device verification failed"
+                });
+            }
+
+            // Generate new tokens
+            const newAccessToken = userService.generateAccessToken(user._id, user.email, user.role);
+            const newRefreshToken = await userService.createRefreshToken(user._id.toString(), currentDeviceInfo);
+
+            // Revoke old refresh token
+            await userService.revokeRefreshToken(refreshToken);
+
+            // Set new cookies
+            res.cookie('accessToken', newAccessToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                maxAge: 15 * 60 * 1000,
+                path: '/'
+            });
+
+            res.cookie('refreshToken', newRefreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                maxAge: 30 * 24 * 60 * 60 * 1000,
+                path: '/'
+            });
+
+            return res.status(200).json({
+                success: true,
+                message: "Token refreshed successfully"
+            });
+        } catch (error: Error | any) {
+            return res.status(error.statusCode || 500).json({
+                success: false,
+                message: error.message || "Internal Server Error"
+            });
+        }
+    }
+
+    async logout(req: AuthRequest, res: Response) {
+        try {
+            const userId = req.user._id.toString();
+            const refreshToken = req.cookies.refreshToken;
+            const ip = req.ip || req.socket.remoteAddress;
+
+            // Revoke the specific refresh token
+            if (refreshToken) {
+                await userService.revokeRefreshToken(refreshToken);
+            }
+
+            // Clear cookies
+            res.clearCookie('accessToken', { path: '/' });
+            res.clearCookie('refreshToken', { path: '/' });
+
+            // Log logout
+            securityLogger.logLogout(userId, req.user.email, ip);
+
+            return res.status(200).json({
+                success: true,
+                message: "Logout successful"
+            });
+        } catch (error: Error | any) {
+            return res.status(error.statusCode || 500).json({
+                success: false,
+                message: error.message || "Internal Server Error"
+            });
+        }
+    }
+
+    async logoutAll(req: AuthRequest, res: Response) {
+        try {
+            const userId = req.user._id.toString();
+            const ip = req.ip || req.socket.remoteAddress;
+
+            // Revoke all refresh tokens for the user
+            await userService.revokeAllUserTokens(userId);
+
+            // Clear cookies
+            res.clearCookie('accessToken', { path: '/' });
+            res.clearCookie('refreshToken', { path: '/' });
+
+            // Log logout all
+            securityLogger.logSecurityEvent(userId, req.user.email, ip, 'LOGOUT_ALL_DEVICES');
+
+            return res.status(200).json({
+                success: true,
+                message: "Logged out from all devices"
             });
         } catch (error: Error | any) {
             return res.status(error.statusCode || 500).json({

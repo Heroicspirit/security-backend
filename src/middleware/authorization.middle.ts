@@ -13,14 +13,20 @@ const userRepository = new UserRepository();
 
 export const authorizedMiddleware = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
+        // Try to extract token from Authorization header or HttpOnly cookie
+        let token: string | undefined;
         const authHeader = req.headers.authorization;
         
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+            token = authHeader.split(" ")[1];
+        } else if (req.cookies && req.cookies.accessToken) {
+            token = req.cookies.accessToken;
+        }
+        
+        if (!token) {
             throw new HttpError(401, "Unauthorized, Please login first");
         }
 
-        const token = authHeader.split(" ")[1]; 
-        
         const decodedToken = jwt.verify(token, JWT_SECRET) as Record<string, any>; 
         
         if (!decodedToken || !decodedToken.id) {

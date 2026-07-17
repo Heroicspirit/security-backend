@@ -13,8 +13,12 @@ export enum SecurityEventType {
   MFA_DISABLED = 'MFA_DISABLED',
   ADMIN_ACTION = 'ADMIN_ACTION',
   PROFILE_UPDATE = 'PROFILE_UPDATE',
+  PROFILE_EXPORT = 'PROFILE_EXPORT',
+  PROFILE_IMPORT = 'PROFILE_IMPORT',
   LOGOUT = 'LOGOUT',
-  UNAUTHORIZED_ACCESS = 'UNAUTHORIZED_ACCESS'
+  UNAUTHORIZED_ACCESS = 'UNAUTHORIZED_ACCESS',
+  DEVICE_MISMATCH_REFRESH_TOKEN = 'DEVICE_MISMATCH_REFRESH_TOKEN',
+  LOGOUT_ALL_DEVICES = 'LOGOUT_ALL_DEVICES'
 }
 
 interface SecurityLogEntry {
@@ -107,12 +111,24 @@ class SecurityLogger {
     this.log(SecurityEventType.PROFILE_UPDATE, userId, email, ip);
   }
 
+  logProfileExport(userId: string, email: string, ip?: string) {
+    this.log(SecurityEventType.PROFILE_EXPORT, userId, email, ip);
+  }
+
+  logProfileImport(userId: string, email: string, ip?: string, details?: any) {
+    this.log(SecurityEventType.PROFILE_IMPORT, userId, email, ip, undefined, details);
+  }
+
   logLogout(userId: string, email: string, ip?: string) {
     this.log(SecurityEventType.LOGOUT, userId, email, ip);
   }
 
   logUnauthorizedAccess(userId?: string, email?: string, ip?: string, endpoint?: string) {
     this.log(SecurityEventType.UNAUTHORIZED_ACCESS, userId, email, ip, undefined, { endpoint });
+  }
+
+  logSecurityEvent(userId: string, email: string, ip?: string, eventType?: string, details?: any) {
+    this.log(eventType as SecurityEventType, userId, email, ip, undefined, details);
   }
 }
 

@@ -1,15 +1,18 @@
 import { Router } from "express";
 import { AuthController } from "../controllers/auth.controller";
 import { authorizedMiddleware } from "../middleware/authorization.middle";
+import { authRateLimit, sensitiveRateLimit } from "../middleware/rateLimit.middleware";
+import { checkBruteForce } from "../middleware/bruteForce.middleware";
+import { ipBlockMiddleware } from "../middleware/ipBlock.middleware";
 
 let authController = new AuthController();
 
 const router = Router();
 
-router.post("/register", authController.register);
-router.post("/login",authController.login);
-router.post("/request-password-reset", authController.sendResetPasswordEmail);
-router.post("/reset-password/:token", authController.resetPassword);
+router.post("/register", authRateLimit, ipBlockMiddleware, authController.register);
+router.post("/login", authRateLimit, ipBlockMiddleware, checkBruteForce((req) => req.body.email), authController.login);
+router.post("/request-password-reset", sensitiveRateLimit, ipBlockMiddleware, authController.sendResetPasswordEmail);
+router.post("/reset-password/:token", sensitiveRateLimit, ipBlockMiddleware, authController.resetPassword);
 
 // Google OAuth routes
 router.get("/google", authController.googleAuth);
@@ -29,5 +32,17 @@ router.post("/mfa/disable", authorizedMiddleware as any, authController.disableM
 
 // Password strength check
 router.post("/check-password-strength", authController.checkPasswordStrength);
+
+// CAPTCHA generation
+router.get("/captcha", authController.generateCaptcha);
+
+// Profile export/import (protected)
+router.get("/profile/export", authorizedMiddleware as any, authController.exportProfile as any);
+router.post("/profile/import", authorizedMiddleware as any, authController.importProfile as any);
+
+// Session management routes
+router.post("/refresh-token", authController.refreshToken as any);
+router.post("/logout", authorizedMiddleware as any, authController.logout as any);
+router.post("/logout-all", authorizedMiddleware as any, authController.logoutAll as any);
 
 export default router;
