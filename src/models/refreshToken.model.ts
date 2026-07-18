@@ -18,7 +18,6 @@ const RefreshTokenSchema: Schema = new Schema({
 });
 
 // Index for faster lookups
-RefreshTokenSchema.index({ tokenHash: 1 });
 RefreshTokenSchema.index({ userId: 1 });
 RefreshTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // TTL index
 
