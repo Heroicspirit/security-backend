@@ -7,21 +7,18 @@ import { connectDatabase } from "./database/mongodb";
 import authRoutes from "./routes/auth.route";
 import productRoutes from "./routes/product.route";
 import orderRoutes from "./routes/order.route";
+import adminRoutes from "./routes/admin.route";
 import path from "path";
 import { generalRateLimit } from "./middleware/rateLimit.middleware";
 
 const app = express();
 
+// Serve static files from uploads directory BEFORE all middleware
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
 // Security middleware
 app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
-    },
-  },
+  contentSecurityPolicy: false, // Disable CSP to allow loading images from backend
   crossOriginEmbedderPolicy: false,
 }));
 
@@ -37,9 +34,6 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files from uploads directory
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
-
 app.get("/", (_req, res) => {
   res.json({ message: "Security Backend API is running" });
 });
@@ -51,7 +45,7 @@ app.get("/health", (_req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
-
+app.use("/api/admin", adminRoutes);
 
 connectDatabase()
   .then(() => {

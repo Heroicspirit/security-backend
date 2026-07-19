@@ -92,7 +92,7 @@ export class AuthController{
                 });
 
                 return res.status(200).json(
-                    { success: true, data: sanitizedUser, message: "Login success" }
+                    { success: true, data: sanitizedUser, token: accessToken, message: "Login success" }
                 );
             } catch (error: Error | any) {
                 // Record failed login attempt
