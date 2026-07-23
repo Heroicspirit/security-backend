@@ -393,7 +393,6 @@ export class UserService {
             email: user.email,
             role: user.role,
             profilePicture: user.profilePicture,
-            favoriteSongs: user.favoriteSongs,
             mfaEnabled: user.mfaEnabled,
             createdAt: user.createdAt,
             updatedAt: user.updatedAt
@@ -402,7 +401,7 @@ export class UserService {
         return profileData;
     }
 
-    async importProfile(userId: string, data: { name?: string; profilePicture?: string; favoriteSongs?: any[] }) {
+    async importProfile(userId: string, data: { name?: string; profilePicture?: string }) {
         const user = await userRepository.getUserById(userId);
         if (!user) {
             throw new HttpError(404, "User not found");
@@ -412,7 +411,6 @@ export class UserService {
         const updateData: any = {};
         if (data.name) updateData.name = data.name;
         if (data.profilePicture !== undefined) updateData.profilePicture = data.profilePicture;
-        if (data.favoriteSongs !== undefined) updateData.favoriteSongs = data.favoriteSongs;
 
         const updatedUser = await userRepository.updateUser(userId, updateData);
         return updatedUser;

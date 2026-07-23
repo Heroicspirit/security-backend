@@ -297,7 +297,7 @@ export class AuthController{
             }
             
             // Mass Assignment Protection: Filter sensitive fields for non-admin users
-            const sensitiveFields = ['role', 'mfaEnabled', 'mfaSecret', 'passwordHistory', 'passwordLastChanged', 'passwordExpiryDays', 'failedLoginAttempts', 'lockUntil', 'lastFailedLogin', 'googleId', 'favoriteSongs'];
+            const sensitiveFields = ['role', 'mfaEnabled', 'mfaSecret', 'passwordHistory', 'passwordLastChanged', 'passwordExpiryDays', 'failedLoginAttempts', 'lockUntil', 'lastFailedLogin', 'googleId'];
             const sanitizedData: any = { ...parsedData.data };
             
             if (req.user.role !== 'admin') {
@@ -735,9 +735,9 @@ export class AuthController{
         try {
             const userId = req.user._id.toString();
             const ip = req.ip || req.socket.remoteAddress;
-            const { name, profilePicture, favoriteSongs } = req.body;
+            const { name, profilePicture } = req.body;
 
-            const updatedUser = await userService.importProfile(userId, { name, profilePicture, favoriteSongs });
+            const updatedUser = await userService.importProfile(userId, { name, profilePicture });
 
             if (!updatedUser) {
                 return res.status(404).json({
@@ -747,7 +747,7 @@ export class AuthController{
             }
 
             // Log profile import with the actual fields that were updated
-            const importedFields = ['name', 'profilePicture', 'favoriteSongs'].filter(f => req.body[f] !== undefined);
+            const importedFields = ['name', 'profilePicture'].filter(f => req.body[f] !== undefined);
             securityLogger.logProfileImport(userId, req.user.email, ip, { fields: importedFields });
 
             return res.status(200).json({
