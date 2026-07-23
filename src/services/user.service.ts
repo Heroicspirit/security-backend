@@ -113,8 +113,14 @@ export class UserService {
             });
         }
 
+        // Check if MFA is enabled
+        if (existingUser.mfaEnabled) {
+            // Return user without token - MFA verification required
+            return { requiresMfa: true, existingUser };
+        }
+
         const token = this.generateToken(existingUser._id, existingUser.email, existingUser.role);
-        return { token, existingUser}
+        return { token, existingUser, requiresMfa: false }
     }
 
     async updateUserProfile(userId: string, updateData: any) {
@@ -276,9 +282,9 @@ export class UserService {
             issuer: "SecurityApp",
         });
 
-        // Encrypt the MFA secret before storing in database
-        const encryptedSecret = encrypt(secret.base32);
-        await userRepository.updateUser(userId, { mfaSecret: encryptedSecret });
+        // Store the secret unencrypted temporarily during generation
+        // It will be encrypted when MFA is enabled
+        await userRepository.updateUser(userId, { mfaSecret: secret.base32 });
 
         const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url || "");
 
@@ -299,25 +305,29 @@ export class UserService {
             throw new HttpError(400, "MFA secret not found. Please generate a secret first.");
         }
 
-        // Decrypt the MFA secret for verification
+        // Try to decrypt if it's encrypted, otherwise use as-is
         let decryptedSecret: string;
         try {
             decryptedSecret = decrypt(user.mfaSecret);
         } catch {
-            throw new HttpError(500, "Failed to decrypt MFA secret");
+            // If decryption fails, assume it's unencrypted (newly generated)
+            decryptedSecret = user.mfaSecret;
         }
 
         const verified = speakeasy.totp.verify({
             secret: decryptedSecret,
             encoding: "base32",
             token: data.token,
+            window: 2, // Allow 2 time windows before and after to account for clock skew
         });
 
         if (!verified) {
             throw new HttpError(400, "Invalid token. Please try again.");
         }
 
-        await userRepository.updateUser(userId, { mfaEnabled: true });
+        // Encrypt the secret now that verification succeeded
+        const encryptedSecret = encrypt(decryptedSecret);
+        await userRepository.updateUser(userId, { mfaSecret: encryptedSecret, mfaEnabled: true });
 
         return { message: "MFA enabled successfully" };
     }
@@ -336,14 +346,18 @@ export class UserService {
         let decryptedSecret: string;
         try {
             decryptedSecret = decrypt(user.mfaSecret);
-        } catch {
-            throw new HttpError(500, "Failed to decrypt MFA secret");
+        } catch (error) {
+            console.error('MFA decryption error - clearing corrupted data:', error);
+            // Auto-clear corrupted MFA data so the user can re-enable
+            await userRepository.updateUser(userId, { mfaSecret: undefined, mfaEnabled: false });
+            throw new HttpError(400, "MFA secret was corrupted and has been reset. Please generate a new secret.");
         }
 
         const verified = speakeasy.totp.verify({
             secret: decryptedSecret,
             encoding: "base32",
             token: data.token,
+            window: 2, // Allow 2 time windows before and after to account for clock skew
         });
 
         if (!verified) {

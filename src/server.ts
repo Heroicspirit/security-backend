@@ -9,6 +9,7 @@ import productRoutes from "./routes/product.route";
 import orderRoutes from "./routes/order.route";
 import adminRoutes from "./routes/admin.route";
 import path from "path";
+import cartRoutes from "./routes/cart.route"; // Import cart routes
 import { generalRateLimit } from "./middleware/rateLimit.middleware";
 
 const app = express();
@@ -46,6 +47,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/cart", cartRoutes); // Use the imported cart routes
 
 connectDatabase()
   .then(() => {

@@ -11,6 +11,9 @@ const router = Router();
 
 router.post("/register", authRateLimit, ipBlockMiddleware, authController.register);
 router.post("/login", authRateLimit, ipBlockMiddleware, checkBruteForce((req) => req.body.email), authController.login);
+router.post("/login-mfa-verify", authRateLimit, ipBlockMiddleware, authController.loginMfaVerify as any);
+router.post("/check-mfa-status", authController.checkMfaStatus as any); // Check MFA status
+router.post("/clear-mfa-data", authController.clearMfaData as any); // Temporary endpoint to clear corrupted MFA data
 router.post("/request-password-reset", sensitiveRateLimit, ipBlockMiddleware, authController.sendResetPasswordEmail);
 router.post("/reset-password/:token", sensitiveRateLimit, ipBlockMiddleware, authController.resetPassword);
 
@@ -42,7 +45,7 @@ router.post("/profile/import", authorizedMiddleware as any, authController.impor
 
 // Session management routes
 router.post("/refresh-token", authController.refreshToken as any);
-router.post("/logout", authorizedMiddleware as any, authController.logout as any);
+router.post("/logout", authController.logout as any); // Remove auth middleware to allow logout even with expired tokens
 router.post("/logout-all", authorizedMiddleware as any, authController.logoutAll as any);
 
 export default router;
