@@ -7,7 +7,6 @@ const UserSchema: Schema = new Schema({
     googleId: {type: String, required: false, unique: true, sparse: true},
     role: { type: String, enum: [ 'admin','user'], default: 'user'},
     profilePicture: {type: String, default: null},
-    favoriteSongs: [{ type: Schema.Types.ObjectId, ref: 'Song' }],
     mfaEnabled: {type: Boolean, default: false},
     mfaSecret: {type: String, required: false},
     passwordHistory: {type: [String], default: []},
@@ -35,7 +34,6 @@ export interface IUser extends Document {
     password: string;
     role: 'admin' | 'user';
     profilePicture?: string;
-    favoriteSongs: mongoose.Types.ObjectId[];
     mfaEnabled: boolean;
     mfaSecret?: string;
     passwordHistory: string[];
