@@ -1,5 +1,7 @@
 import { CreateUserDTO, LoginUserDto, UpdateUserDto, EnableMfaDto, VerifyMfaDto } from "../dtos/user.dtos";
 import { UserService } from "../services/user.service";
+import { UserRepository } from "../repository/user.repository";
+import { UserModel } from "../models/user.model";
 import { Request, Response } from "express";
 import passport from "../config/passport";
 import { AuthRequest } from "../middleware/authorization.middle";
@@ -10,8 +12,11 @@ import { securityLogger } from "../utils/securityLogger";
 import { captchaService } from "../utils/captcha";
 import { bruteForceProtection } from "../middleware/bruteForce.middleware";
 import { extractDeviceInfo } from "../utils/deviceFingerprint";
+import { encrypt, decrypt } from "../utils/encryption";
+import speakeasy from "speakeasy";
 
 let userService = new UserService();
+let userRepository = new UserRepository();
 export class AuthController{
     async register(req: Request, res: Response) {
         try {
@@ -61,18 +66,30 @@ export class AuthController{
                 );
             }
 
-                const { existingUser } = await userService.loginUser(parsedData.data);
+                const loginResult = await userService.loginUser(parsedData.data);
+
+                // Check if MFA is required
+                if (loginResult.requiresMfa) {
+                    const sanitizedUser = sanitizeUser(loginResult.existingUser.toObject());
+                    return res.status(200).json({
+                        success: true,
+                        requiresMfa: true,
+                        data: sanitizedUser,
+                        message: "MFA verification required"
+                    });
+                }
+
                 // Record successful login attempt
                 bruteForceProtection.recordSuccessfulAttempt(email);
                 // Log successful login
-                securityLogger.logLoginSuccess(existingUser._id.toString(), existingUser.email, ip, userAgent);
+                securityLogger.logLoginSuccess(loginResult.existingUser._id.toString(), loginResult.existingUser.email, ip, userAgent);
 
-                const sanitizedUser = sanitizeUser(existingUser.toObject());
-                
+                const sanitizedUser = sanitizeUser(loginResult.existingUser.toObject());
+
                 // Generate device info and tokens
                 const deviceInfo = extractDeviceInfo(req);
-                const accessToken = userService.generateAccessToken(existingUser._id, existingUser.email, existingUser.role);
-                const refreshToken = await userService.createRefreshToken(existingUser._id.toString(), deviceInfo);
+                const accessToken = userService.generateAccessToken(loginResult.existingUser._id, loginResult.existingUser.email, loginResult.existingUser.role);
+                const refreshToken = await userService.createRefreshToken(loginResult.existingUser._id.toString(), deviceInfo);
 
                 // Set HttpOnly, Secure, SameSite=Strict cookies
                 res.cookie('accessToken', accessToken, {
@@ -92,7 +109,7 @@ export class AuthController{
                 });
 
                 return res.status(200).json(
-                    { success: true, data: sanitizedUser, message: "Login success" }
+                    { success: true, data: sanitizedUser, token: accessToken, message: "Login success" }
                 );
             } catch (error: Error | any) {
                 // Record failed login attempt
@@ -397,6 +414,195 @@ export class AuthController{
         }
     }
 
+    async checkMfaStatus(req: Request, res: Response) {
+        try {
+            const { email } = req.body;
+
+            if (!email) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Email is required"
+                });
+            }
+
+            const user = await userRepository.getUserByEmail(email);
+            if (!user) {
+                return res.status(404).json({
+                    success: false,
+                    message: "User not found"
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                data: {
+                    mfaEnabled: user.mfaEnabled || false,
+                    hasMfaSecret: !!user.mfaSecret
+                }
+            });
+        } catch (error: Error | any) {
+            return res.status(error.statusCode || 500).json({
+                success: false,
+                message: error.message || "Internal Server Error"
+            });
+        }
+    }
+
+    async clearMfaData(req: Request, res: Response) {
+        try {
+            const { email } = req.body;
+
+            if (!email) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Email is required"
+                });
+            }
+
+            const user = await userRepository.getUserByEmail(email);
+            if (!user) {
+                return res.status(404).json({
+                    success: false,
+                    message: "User not found"
+                });
+            }
+
+            // Use $unset to completely remove the mfaSecret field from the document
+            await userRepository.updateUser(user._id.toString(), {
+                mfaEnabled: false
+            });
+
+            // Directly update the user model to unset mfaSecret
+            await UserModel.findByIdAndUpdate(user._id, {
+                $unset: { mfaSecret: 1 }
+            });
+
+            return res.status(200).json({
+                success: true,
+                message: "MFA data cleared successfully. Please generate a new MFA secret.",
+                data: {
+                    mfaEnabled: false,
+                    mfaSecret: null
+                }
+            });
+        } catch (error: Error | any) {
+            return res.status(error.statusCode || 500).json({
+                success: false,
+                message: error.message || "Internal Server Error"
+            });
+        }
+    }
+
+    async loginMfaVerify(req: Request, res: Response) {
+        try {
+            const { email, token } = req.body;
+
+            if (!email || !token) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Email and token are required"
+                });
+            }
+
+            const user = await userRepository.getUserByEmail(email);
+            if (!user) {
+                return res.status(404).json({
+                    success: false,
+                    message: "User not found"
+                });
+            }
+
+            if (!user.mfaEnabled || !user.mfaSecret) {
+                return res.status(400).json({
+                    success: false,
+                    message: "MFA is not enabled for this account"
+                });
+            }
+
+            // Decrypt the MFA secret for verification
+            let decryptedSecret: string;
+            // Check if secret is encrypted (contains ':') or unencrypted
+            if (user.mfaSecret.includes(':')) {
+                try {
+                    decryptedSecret = decrypt(user.mfaSecret);
+                } catch (error) {
+                    console.error('MFA decryption error - clearing corrupted data:', error);
+                    // Auto-clear corrupted MFA data so the user can log in and re-enable
+                    await UserModel.findByIdAndUpdate(user._id, {
+                        mfaEnabled: false,
+                        $unset: { mfaSecret: 1 }
+                    });
+                    return res.status(200).json({
+                        success: true,
+                        mfaReset: true,
+                        message: "MFA secret was corrupted and has been reset. Please log in and re-enable MFA.",
+                        data: sanitizeUser(user.toObject())
+                    });
+                }
+            } else {
+                // Secret is unencrypted, use as-is
+                decryptedSecret = user.mfaSecret;
+            }
+
+            const verified = speakeasy.totp.verify({
+                secret: decryptedSecret,
+                encoding: "base32",
+                token: token,
+                window: 2
+            });
+
+            if (!verified) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid MFA token"
+                });
+            }
+
+            // Generate tokens and complete login
+            const ip = req.ip || req.socket.remoteAddress;
+            const userAgent = req.headers['user-agent'];
+
+            const deviceInfo = extractDeviceInfo(req);
+            const accessToken = userService.generateAccessToken(user._id, user.email, user.role);
+            const refreshToken = await userService.createRefreshToken(user._id.toString(), deviceInfo);
+
+            // Set HttpOnly cookies
+            res.cookie('accessToken', accessToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                maxAge: 15 * 60 * 1000,
+                path: '/'
+            });
+
+            res.cookie('refreshToken', refreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                maxAge: 30 * 24 * 60 * 60 * 1000,
+                path: '/'
+            });
+
+            // Record successful login
+            bruteForceProtection.recordSuccessfulAttempt(email);
+            securityLogger.logLoginSuccess(user._id.toString(), user.email, ip, userAgent);
+
+            const sanitizedUser = sanitizeUser(user.toObject());
+
+            return res.status(200).json({
+                success: true,
+                data: sanitizedUser,
+                token: accessToken,
+                message: "Login successful"
+            });
+        } catch (error: Error | any) {
+            return res.status(error.statusCode || 500).json({
+                success: false,
+                message: error.message || "Internal Server Error"
+            });
+        }
+    }
+
     async verifyMfa(req: AuthRequest, res: Response) {
         try {
             const userId = req.user._id.toString();
@@ -627,21 +833,29 @@ export class AuthController{
 
     async logout(req: AuthRequest, res: Response) {
         try {
-            const userId = req.user._id.toString();
+            const userId = req.user?._id?.toString();
+            const userEmail = req.user?.email;
             const refreshToken = req.cookies.refreshToken;
             const ip = req.ip || req.socket.remoteAddress;
 
-            // Revoke the specific refresh token
+            // Revoke the specific refresh token if present
             if (refreshToken) {
-                await userService.revokeRefreshToken(refreshToken);
+                try {
+                    await userService.revokeRefreshToken(refreshToken);
+                } catch (error) {
+                    // Ignore token revocation errors - still proceed with logout
+                    console.error('Token revocation error:', error);
+                }
             }
 
             // Clear cookies
             res.clearCookie('accessToken', { path: '/' });
             res.clearCookie('refreshToken', { path: '/' });
 
-            // Log logout
-            securityLogger.logLogout(userId, req.user.email, ip);
+            // Log logout if we have user info
+            if (userId && userEmail) {
+                securityLogger.logLogout(userId, userEmail, ip);
+            }
 
             return res.status(200).json({
                 success: true,

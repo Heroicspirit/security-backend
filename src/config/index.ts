@@ -9,3 +9,5 @@ export const JWT_SECRET: string =
 process.env.JWT_SECRET || 'default_secret';
 export const CLIENT_URL: string =
 process.env.CLIENT_URL || 'http://localhost:3001';
+export const ENCRYPTION_KEY: string = 
+process.env.ENCRYPTION_KEY || 'default_encryption_key_change_in_production_32chr';
